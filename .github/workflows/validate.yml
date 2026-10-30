@@ -1,0 +1,21 @@
+name: Validate addon
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lua51:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build official Lua 5.1.5 test tool
+        shell: bash
+        run: |
+          mkdir -p .toolchain
+          curl --fail --silent --show-error --location https://www.lua.org/ftp/lua-5.1.5.tar.gz --output .toolchain/lua-5.1.5.tar.gz
+          echo '2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333  .toolchain/lua-5.1.5.tar.gz' | sha256sum --check --strict
+          tar -xzf .toolchain/lua-5.1.5.tar.gz -C .toolchain
+          make -C .toolchain/lua-5.1.5 generic
+      - name: Syntax, engine, UI events and route integrity
+        run: python3 tools/validate.py --lua .toolchain/lua-5.1.5/src/lua --luac .toolchain/lua-5.1.5/src/luac
