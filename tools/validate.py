@@ -15,7 +15,7 @@ lua, luac = str(Path(args.lua).resolve()), str(Path(args.luac).resolve())
 for source in sorted(addon.rglob('*.lua')):
     subprocess.run([luac, '-p', str(source)], check=True, cwd=repo)
 print(f'PASS: {len(list(addon.rglob("*.lua")))} Lua syntax checks', flush=True)
-for test in ('test_engine.lua', 'test_ui.lua'):
+for test in ('test_engine.lua', 'test_ui.lua', 'test_robustness.lua'):
     subprocess.run([lua, str(addon / 'Tests' / test), str(addon) + '/'], check=True, cwd=repo)
 
 toc = (addon / 'ForLevel.toc').read_text(encoding='utf-8')

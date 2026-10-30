@@ -8,7 +8,7 @@
 
 Copy the `ForLevel` folder into the official Forever client's `Interface/AddOns` folder. The resulting path must end in `ForLevel/ForLevel.toc`. Enable it and type `/forlevel` (or `/fl`). Drag the window to move it; Back, Skip, Done and Undo handle recovery. Hover for full step details.
 
-See [addon instructions and limitations](ForLevel/README.md), [guide comparison](docs/guide-comparison.md), [route research](docs/research.md), [mockup](docs/window-mockup.svg), and [validation](ForLevel/VALIDATION.md).
+See [addon instructions and limitations](ForLevel/README.md), [guide comparison](docs/guide-comparison.md), [route research](docs/research.md), [mockup](docs/window-mockup.svg), and [validation](ForLevel/VALIDATION.md), and [behavior verification matrix](docs/parity.md).
 
 ## Test
 

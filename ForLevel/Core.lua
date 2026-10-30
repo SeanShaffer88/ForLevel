@@ -4,23 +4,37 @@ F.guides, F.order = {}, {}
 local kinds = {"accept","turnin","complete","go","level","sethome","flightpath","fly","hearth","train","vendor","loot","note","die"}
 local questKinds = {accept=true,turnin=true,complete=true}
 function F.Plain(v)
-    if issecretvalue and issecretvalue(v) then return nil end
+    if issecretvalue then local ok,secret=pcall(issecretvalue,v); if not ok or secret then return nil end end
     return v
 end
 local function call(t,k,...)
-    if not t or type(t[k]) ~= "function" then return nil end
-    local ok,v = pcall(t[k],...)
+    local fn=F.Read(t,k)
+    if type(fn) ~= "function" then return nil end
+    local ok,v = pcall(fn,...)
     if ok then return F.Plain(v) end
 end
+F.Call=call
 function F.Number(v)
     v=F.Plain(v)
     if type(v)=="number" and v==v and v~=math.huge and v~=-math.huge then return v end
 end
 function F.Table(v)
     v=F.Plain(v)
-    if type(v)~="table" or (issecrettable and issecrettable(v)) then return nil end
-    if canaccesstable and not canaccesstable(v) then return nil end
+    if type(v)~="table" then return nil end
+    if issecrettable then local ok,secret=pcall(issecrettable,v); if not ok or secret then return nil end end
+    if canaccesstable then local ok,accessible=pcall(canaccesstable,v); if not ok or not accessible then return nil end end
     return v
+end
+function F.Read(t,key)
+    t=F.Plain(t)
+    if type(t)=="table" then if not F.Table(t) then return nil end
+    elseif type(t)~="userdata" then return nil end
+    local ok,value=pcall(function() return t[key] end)
+    if ok then return F.Plain(value) end
+end
+function F.Integer(v,low,high)
+    v=F.Number(v)
+    if v and v==math.floor(v) and v>=low and v<=high then return v end
 end
 function F.Matches(filter,value)
     if filter==nil then return true end
@@ -40,17 +54,23 @@ function F:RegisterGuide(g)
     self.guides[g.id]=g; self.order[#self.order+1]=g
 end
 function F:Character()
-    self.faction=F.Plain(UnitFactionGroup("player"))
-    self.class=F.Plain(select(2,UnitClass("player")))
-    self.race=F.Plain(select(2,UnitRace("player")))
+    self.faction=call(_G,"UnitFactionGroup","player")
+    local function token(name)
+        local fn=F.Read(_G,name)
+        if type(fn)~="function" then return nil end
+        local ok,_,value=pcall(fn,"player")
+        if ok then return F.Plain(value) end
+    end
+    self.class,self.race=token("UnitClass"),token("UnitRace")
 end
-function F:Level() return F.Number(UnitLevel("player")) or 1 end
+function F:Level() return F.Integer(call(_G,"UnitLevel","player"),1,1000) or 1 end
 function F:GuideApplies(g)
     return g.faction==self.faction and self.Matches(g.races,self.race) and self.Matches(g.classes,self.class)
 end
 function F:Applies(s)
     if s.dungeon or not self.Matches(s.class,self.class) or not self.Matches(s.race,self.race) then return false end
     if s.quest and self.excluded and self.excluded[s.quest] then return false end
+    if s.accept then for _,q in ipairs(s.requires or {}) do if self.excluded and self.excluded[q] then return false end end end
     if s.ids and #self:IDs(s)==0 then return false end
     return true
 end
@@ -62,38 +82,44 @@ function F:IDs(s)
     return ids
 end
 function F:SoloExclusions()
-    local solo,dungeon={},{}
+    local alternatives,dungeon={},{}
     self.excluded={}
     for _,g in ipairs(self.order) do
         if self:GuideApplies(g) then
             for _,s in ipairs(g.steps) do
                 if s.accept and self.Matches(s.class,self.class) and self.Matches(s.race,self.race) then
                     for _,q in ipairs(s.ids) do
-                        if s.dungeon then dungeon[q]=true else solo[q]=true end
+                        if self.Matches(s.only and s.only[q],self.class) then
+                            if s.dungeon then dungeon[q]=true else
+                                alternatives[q]=alternatives[q] or {}; alternatives[q][#alternatives[q]+1]=s
+                            end
+                        end
                     end
                 end
             end
         end
     end
-    for q in pairs(dungeon) do if not solo[q] then self.excluded[q]=true end end
-    for _=1,100 do
+    for q in pairs(dungeon) do if not alternatives[q] then self.excluded[q]=true end end
+    -- Exclude a quest only if every applicable solo accept alternative is blocked.
+    -- The fixed point is monotonic and bounded by the number of known quests.
+    local limit=1; for _ in pairs(alternatives) do limit=limit+1 end
+    for _=1,limit do
         local changed=false
-        for _,g in ipairs(self.order) do if self:GuideApplies(g) then
-            for _,s in ipairs(g.steps) do if s.accept and not s.dungeon then
-                for _,req in ipairs(s.requires or {}) do
-                    if self.excluded[req] then
-                        for _,q in ipairs(s.ids) do if not self.excluded[q] then self.excluded[q]=true; changed=true end end
-                    end
-                end
-            end end
+        for q,options in pairs(alternatives) do if not self.excluded[q] then
+            local available=false
+            for _,s in ipairs(options) do
+                local blocked=false
+                for _,req in ipairs(s.requires or {}) do if self.excluded[req] then blocked=true; break end end
+                if not blocked then available=true; break end
+            end
+            if not available then self.excluded[q]=true; changed=true end
         end end
         if not changed then break end
     end
 end
 function F:Turned(q) return call(C_QuestLog,"IsQuestFlaggedCompleted",q)==true or self.db.turned[q]==true end
 function F:InLog(q)
-    local i=F.Number(call(C_QuestLog,"GetLogIndexForQuestID",q))
-    return i~=nil and i>0
+    return F.Integer(call(C_QuestLog,"GetLogIndexForQuestID",q),1,2147483647)~=nil
 end
 function F:Ready(q) return self:InLog(q) and call(C_QuestLog,"IsComplete",q)==true end
 function F:Item(id) return F.Number(call(C_Item,"GetItemCount",id)) or 0 end
@@ -105,11 +131,11 @@ function F:HuntDone(s,q)
     local matched={}
     for _,o in ipairs(self:Objectives(q)) do
         if not F.Table(o) then return false end
-        local text=F.Plain(o.text)
+        local text=F.Read(o,"text")
         if type(text)=="string" then
             for n,name in ipairs(names) do
                 if text:lower():find(name:lower(),1,true) then
-                    if F.Plain(o.finished)~=true then return false end
+                    if F.Read(o,"finished")~=true then return false end
                     matched[n]=true
                 end
             end
@@ -166,7 +192,7 @@ end
 function F:Select(id)
     local g=self.guides[id]
     if not g or not self:GuideApplies(g) then return false end
-    self.guide=g; self.db.guide=id; self.inspect=nil; return true
+    self.guide=g; self.db.guide=id; self.inspect=nil; self.routeError=nil; return true
 end
 function F:DefaultGuide()
     local best
@@ -176,11 +202,14 @@ function F:DefaultGuide()
     return best
 end
 function F:Current()
-    if self.missingAPI then return nil end
+    if not self:CheckAPIs() then return nil end
     local g=self.guide
     if not g then return nil end
+    self.routeError=nil
     if self.inspect then return g.steps[self.inspect] end
+    local visited={}
     for _=1,20 do
+        visited[g.id]=true
         local waiting
         for _,s in ipairs(g.steps) do
             if self:Applies(s) and not self:Done(s) then
@@ -189,10 +218,15 @@ function F:Current()
             end
         end
         if waiting then return waiting end
-        local n=g.next and self.guides[g.next]
-        if not n or not self:GuideApplies(n) then return nil end
+        if g.next==nil then return nil end
+        if type(g.next)~="string" or g.next=="" then self.routeError="Invalid next chapter in "..g.id; return nil end
+        local n=self.guides[g.next]
+        if not n then self.routeError="Missing next chapter: "..g.next; return nil end
+        if not self:GuideApplies(n) then self.routeError="Incompatible next chapter: "..g.next; return nil end
+        if visited[n.id] then self.routeError="Cyclic chapter link: "..n.id; return nil end
         self:Select(n.id); g=n
     end
+    self.routeError="Chapter traversal limit reached"
 end
 function F:Deferred(s,seen)
     if seen[s] then return false end
@@ -235,8 +269,16 @@ function F:Manual(reason)
     marks[s.index]=reason; self.inspect=nil
 end
 function F:Undo()
-    local u=table.remove(self.db.undo)
-    if u then self:Select(u.guide); self:MarkTable(self.guide)[u.index]=u.previous; self.inspect=u.index end
+    self.db.undo=F.Table(self.db.undo) or {}
+    for _=1,100 do
+        local u=table.remove(self.db.undo)
+        if u==nil then return false end
+        local valid=self:UndoEntry(u)
+        if valid and self:Select(valid.guide) then
+            self:MarkTable(self.guide)[valid.index]=valid.previous; self.inspect=valid.index; return true
+        end
+    end
+    return false
 end
 function F:Back()
     local s=self:Current(); if not s then return end
@@ -246,39 +288,55 @@ function F:Bearing(pc,px,py,tc,tx,ty,facing)
     pc,tc=F.Number(pc),F.Number(tc)
     px,py,tx,ty,facing=F.Number(px),F.Number(py),F.Number(tx),F.Number(ty),F.Number(facing)
     if not pc or not tc or pc~=tc or not px or not py or not tx or not ty or not facing then return nil end
-    local dx,dy=tx-px,ty-py
+    local dx,dy=F.Number(tx-px),F.Number(ty-py)
+    if not dx or not dy then return nil end
+    local distance=F.Number(math.sqrt(dx*dx+dy*dy))
+    if not distance then return nil end
     local atan2=math.atan2
     if not atan2 then return nil end
-    return (atan2(dy,dx)-facing)%(2*math.pi),math.sqrt(dx*dx+dy*dy)
+    return (atan2(dy,dx)-facing)%(2*math.pi),distance
 end
 function F:World(map,x,y)
-    if not C_Map or not C_Map.GetWorldPosFromMapPos or not CreateVector2D then return nil end
-    local ok,c,v=pcall(C_Map.GetWorldPosFromMapPos,map,CreateVector2D(x,y))
+    map,x,y=F.Integer(map,1,2147483647),F.Number(x),F.Number(y)
+    local convert,vector=F.Read(C_Map,"GetWorldPosFromMapPos"),F.Read(_G,"CreateVector2D")
+    if not map or not x or not y or x<0 or x>1 or y<0 or y>1 or type(convert)~="function" or type(vector)~="function" then return nil end
+    local ok,c,v=pcall(function() return convert(map,vector(x,y)) end)
     if not ok then return nil end
     c=F.Number(c); v=F.Plain(v)
     if not c or not v then return nil end
-    local good,x,y=pcall(function() return v.x,v.y end)
-    if not good then return nil end
-    return c,F.Number(x),F.Number(y)
+    return c,F.Number(F.Read(v,"x")),F.Number(F.Read(v,"y"))
 end
 function F:Resolve(zone)
-    if type(zone)=="number" then return zone end
-    local map=self.ZoneIDs[zone]
-    if map then return map end
-    return self.learned and self.learned[zone]
+    if type(zone)=="number" then return F.Integer(zone,1,2147483647) end
+    return self.learned and self.learned[zone] or self.ZoneIDs[zone]
+end
+function F:LearnZone()
+    local zoneType=F.Number(F.Read(F.Read(Enum,"UIMapType"),"Zone"))
+    if not zoneType then return end
+    local map=F.Integer(call(C_Map,"GetBestMapForUnit","player"),1,2147483647)
+    local seen={}
+    for _=1,16 do
+        if not map or seen[map] then return end
+        seen[map]=true
+        local info=call(C_Map,"GetMapInfo",map)
+        local kind,name=F.Number(F.Read(info,"mapType")),F.Read(info,"name")
+        if kind==zoneType then
+            if type(name)=="string" and name~="" then self.learned[name]=map end
+            return
+        end
+        map=F.Integer(F.Read(info,"parentMapID"),1,2147483647)
+    end
 end
 function F:Offset(map,x,y)
     local pm=F.Number(call(C_Map,"GetBestMapForUnit","player"))
     if not pm then return nil end
     local pos=call(C_Map,"GetPlayerMapPosition",pm,"player")
     if not pos then return nil end
-    local good,rawX,rawY=pcall(function() return pos.x,pos.y end)
-    if not good then return nil end
-    local px,py=F.Number(rawX),F.Number(rawY)
-    if not px or not py or (px==0 and py==0) then return nil end
+    local px,py=F.Number(F.Read(pos,"x")),F.Number(F.Read(pos,"y"))
+    if not px or not py or px<0 or px>1 or py<0 or py>1 or (px==0 and py==0) then return nil end
     local pc,wx,wy=self:World(pm,px,py)
     local tc,tx,ty=self:World(map,x,y)
-    local facing=GetPlayerFacing and F.Number(GetPlayerFacing())
+    local facing=F.Number(call(_G,"GetPlayerFacing"))
     return self:Bearing(pc,wx,wy,tc,tx,ty,facing)
 end
 function F:Target(s)
@@ -297,33 +355,122 @@ function F:Target(s)
         for _,a in ipairs(s.areas) do
             local relevant=false
             for _,q in ipairs(self:IDs(s)) do if a.q==q and not self:HuntDone(s,q) then relevant=true end end
-            local map=relevant and self:Resolve(a[3] or s.owner.zone)
+            local map,x,y
+            if relevant then map,x,y=self:Coordinate(s,a,"area:".._) end
             if map then
-                local b,d=self:Offset(map,a[1]/100,a[2]/100)
-                local r=a.r or 30
+                local b,d=self:Offset(map,x,y)
+                local r=F.Number(a.r) or 30; if r<0 then r=30 end
                 if d and (not dist or d-r<dist-(radius or 0)) then angle,dist,radius=b,d,r end
             end
         end
         if dist then return angle,dist,radius end
     end
     if not at then return nil end
-    local map=self:Resolve(at[3] or s.owner.zone)
-    if map then return self:Offset(map,at[1]/100,at[2]/100) end
+    local map,x,y=self:Coordinate(s,at,"at")
+    if map then return self:Offset(map,x,y) end
 end
-function F:Init()
-    ForLevelCharDB=F.Table(ForLevelCharDB) or {}
-    self.db=ForLevelCharDB
-    if self.db.routeVersion~="BoostedXP-1.0.6" then self.db.marks={}; self.db.undo={}; self.db.routeVersion="BoostedXP-1.0.6" end
-    self.db.marks=F.Table(self.db.marks) or {}; self.db.undo=F.Table(self.db.undo) or {}; self.db.turned=F.Table(self.db.turned) or {}
-    for k,v in pairs(self.db.marks) do if type(k)~="string" or not F.Table(v) then self.db.marks[k]=nil end end
-    self:Character(); self:SoloExclusions(); self.learned={}
+function F.ValidPoint(point)
+    local x,y=F.Number(F.Read(point,1)),F.Number(F.Read(point,2))
+    return x~=nil and y~=nil and x>=0 and x<=100 and y>=0 and y<=100
+end
+function F:Coordinate(s,point,kind)
+    if not F.ValidPoint(point) then
+        self.navigationWarnings=self.navigationWarnings or {}
+        self.navigationWarnings[s.owner.id..":"..s.index..":"..kind]="Invalid source coordinate ignored"
+        return nil
+    end
+    local map=self:Resolve(point[3] or s.owner.zone)
+    if map then return map,point[1]/100,point[2]/100 end
+end
+function F:QuestEligible(q,g)
+    if self.excluded and self.excluded[q] then return false end
+    local found=false
+    for _,s in ipairs(g.steps) do if s.accept then
+        for _,id in ipairs(s.ids) do if id==q then
+            found=true
+            if self:Applies(s) and self.Matches(s.only and s.only[q],self.class) then return true end
+        end end
+    end end
+    return not found -- A held quest may have been accepted in an earlier chapter.
+end
+function F:Advisory(s)
+    local lines,seen,held={},{},false
+    for _,q in ipairs(s.onway or {}) do
+        if not seen[q] and self:QuestEligible(q,s.owner) and self:InLog(q) and not (self:Ready(q) or self:Turned(q)) then
+            seen[q]=true; held=true; lines[#lines+1]="On the way: "..self:Title(q)
+            for _,objective in ipairs(self:Objectives(q)) do
+                local text=F.Read(objective,"text")
+                if type(text)=="string" and F.Read(objective,"finished")~=true then lines[#lines+1]="[ ] "..text end
+            end
+        end
+    end
+    if s.hint and (not s.onway or held) then lines[#lines+1]=s.hint end
+    local drops={}; for q in pairs(s.drops or {}) do if F.Integer(q,1,2147483647) then drops[#drops+1]=q end end
+    table.sort(drops)
+    for _,q in ipairs(drops) do
+        if self:QuestEligible(q,s.owner) and not (self:InLog(q) or self:Turned(q)) and type(s.drops[q])=="string" then lines[#lines+1]=s.drops[q] end
+    end
+    return lines
+end
+local anchors={TOPLEFT=true,TOP=true,TOPRIGHT=true,LEFT=true,CENTER=true,RIGHT=true,BOTTOMLEFT=true,BOTTOM=true,BOTTOMRIGHT=true}
+local function mark(value) return value=="skip" or value=="manual" end
+function F:UndoEntry(value)
+    value=F.Table(value)
+    if not value then return nil end
+    local id=F.Read(value,"guide"); local g=type(id)=="string" and self.guides[id]
+    if not g or (self.faction and not self:GuideApplies(g)) then return nil end
+    local index=F.Integer(F.Read(value,"index"),1,#g.steps)
+    local previous=F.Read(value,"previous")
+    if not index or (previous~=nil and not mark(previous)) then return nil end
+    return {guide=id,index=index,previous=previous}
+end
+function F:SanitizeState(saved)
+    saved=F.Table(saved) or {}
+    local db={routeVersion="BoostedXP-1.0.6",marks={},undo={},turned={},hidden=F.Read(saved,"hidden")==true}
+    local id=F.Read(saved,"guide"); local g=type(id)=="string" and self.guides[id]
+    if g and (not self.faction or self:GuideApplies(g)) then db.guide=id end
+    if F.Read(saved,"routeVersion")==db.routeVersion then
+        for guide,values in pairs(F.Table(F.Read(saved,"marks")) or {}) do
+            local owner=type(guide)=="string" and self.guides[guide]
+            if owner and F.Table(values) then
+                local clean={}
+                for key,value in pairs(values) do
+                    local index=F.Integer(key,1,#owner.steps); value=F.Plain(value)
+                    if index and mark(value) then clean[index]=value end
+                end
+                db.marks[guide]=clean
+            end
+        end
+        local undo=F.Table(F.Read(saved,"undo")) or {}
+        for i=1,100 do
+            local entry=rawget(undo,i); if entry==nil then break end
+            entry=self:UndoEntry(entry); if entry then db.undo[#db.undo+1]=entry end
+        end
+    end
+    for key,value in pairs(F.Table(F.Read(saved,"turned")) or {}) do
+        local quest=F.Integer(key,1,2147483647)
+        if quest and F.Plain(value)==true then db.turned[quest]=true end
+    end
+    local position=F.Table(F.Read(saved,"position"))
+    if position then
+        local point,relative=F.Read(position,1),F.Read(position,2)
+        local x,y=F.Number(F.Read(position,3)),F.Number(F.Read(position,4))
+        if type(point)=="string" and type(relative)=="string" and anchors[point] and anchors[relative] and x and y and math.abs(x)<=100000 and math.abs(y)<=100000 then db.position={point,relative,x,y} end
+    end
+    return db
+end
+function F:CheckAPIs()
     self.missingAPI=nil
     local required={"IsQuestFlaggedCompleted","GetLogIndexForQuestID","IsComplete","GetQuestObjectives","GetTitleForQuestID"}
     for _,name in ipairs(required) do
-        if not C_QuestLog or type(C_QuestLog[name])~="function" then self.missingAPI="C_QuestLog."..name; break end
+        if type(F.Read(C_QuestLog,name))~="function" then self.missingAPI="C_QuestLog."..name; break end
     end
-    local map=call(C_Map,"GetBestMapForUnit","player")
-    local info=map and call(C_Map,"GetMapInfo",map)
-    if info and type(F.Plain(info.name))=="string" then self.learned[info.name]=map end
+    return not self.missingAPI
+end
+function F:Init()
+    self:Character()
+    self.db=self:SanitizeState(ForLevelCharDB); ForLevelCharDB=self.db
+    self:SoloExclusions(); self.learned={}; self.inspect=nil; self.guide=nil; self.routeError=nil
+    self:CheckAPIs(); self:LearnZone()
     if not self:Select(self.db.guide) then local g=self:DefaultGuide(); if g then self:Select(g.id) end end
 end

@@ -29,3 +29,9 @@ The selected baseline is a researched speed candidate, not a proven optimum. Sou
 ## Validation status
 
 See `VALIDATION.md` for commands and results. Local static checks are not an in-game test. Before regular use, test cardinal arrow bearings, arrival, map transitions, secret/missing position handling, acceptance/abandonment/turn-in, split objectives, race/class filters, solo prerequisite chains, manual Undo and saved progress in the launch client. No fastest 1–60 time is promised.
+
+## Recovery and source guidance
+
+Malformed saved fields are discarded while valid per-character marks and confirmed turn-ins remain. Undo ignores missing or incompatible guides and invalid indices. Missing quest API functions suspend the list and are checked again automatically. Map learning uses verified zone metadata, including bounded interior-parent lookup; invalid source coordinates are ignored rather than clamped. Two known upstream area points are documented in validation.
+
+Hover details retain on-the-way work for compatible quests already in your log and pending quest-item drop hints. These are advisory only; they do not advance quests or change the route. Current/row tooltips and navigation are cleared when their step becomes stale. All guide data remains draft and unchanged.

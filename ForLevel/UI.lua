@@ -36,12 +36,14 @@ local action=font(w,77,-61,229,"GameFontHighlightSmall",14)
 local current=font(w,77,-79,229,"GameFontHighlight",29)
 local meta=font(w,77,-111,229,"GameFontDisableSmall",14)
 F.ui={window=w,arrow=arrow,ring=ring,status=status,badge=badge,action=action,current=current,meta=meta,rows={}}
-local function tip(text)
+local function tip(text,owner)
+    w.tooltip=owner or w
     GameTooltip:SetOwner(w,"ANCHOR_RIGHT"); GameTooltip:SetText("ForLevel")
     GameTooltip:AddLine(text,1,1,1,true); GameTooltip:Show()
 end
+local function hideTip() w.tooltip=nil; GameTooltip:Hide() end
 w:SetScript("OnEnter",function() if w.fullDetail then tip(w.fullDetail) end end)
-w:SetScript("OnLeave",function() GameTooltip:Hide() end)
+w:SetScript("OnLeave",hideTip)
 for i=1,5 do
     local row=CreateFrame("Button",nil,w); row:SetSize(318,27); row:SetPoint("TOPLEFT",1,-132-(i-1)*27)
     row.highlight=texture(row,0,0,318,27,.12,.125,.135)
@@ -49,8 +51,8 @@ for i=1,5 do
     row.number=font(row,10,-8,25,"GameFontDisableSmall",14)
     row.label=font(row,36,-8,272,"GameFontHighlightSmall",14)
     row.label:SetWordWrap(false)
-    row:SetScript("OnEnter",function(self) if self.step then tip(F:Text(self.step).."\n"..(self.step.text or "").."\nClick to review; /forlevel resume continues the route.") end end)
-    row:SetScript("OnLeave",function() GameTooltip:Hide() end)
+    row:SetScript("OnEnter",function(self) if self.step then tip(F:Text(self.step).."\n"..(self.step.text or "").."\nClick to review; /forlevel resume continues the route.",self) end end)
+    row:SetScript("OnLeave",hideTip)
     row:SetScript("OnClick",function(self) if self.step then F.inspect=self.step.index; F:Render() end end)
     F.ui.rows[i]=row
 end
@@ -62,18 +64,18 @@ local function button(label,x,red,callback,help)
     local text=b:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); text:SetPoint("CENTER"); text:SetText(label)
     b:RegisterForClicks("LeftButtonUp","RightButtonUp")
     b:SetScript("OnClick",function(_,mouse) if F.db then callback(mouse); F:Render() end end)
-    b:SetScript("OnEnter",function() tip(help) end); b:SetScript("OnLeave",function() GameTooltip:Hide() end)
+    b:SetScript("OnEnter",function() tip(help,b) end); b:SetScript("OnLeave",hideTip)
     return b
 end
 F.ui.back=button("Back",11,false,function(mouse) if mouse=="RightButton" then F.inspect=nil else F:Back() end end,"Back reviews a previous step. Right-click resumes automatic progression.")
 F.ui.skip=button("Skip",113,false,function() F:Manual("skip") end,"Record a reversible manual skip. /forlevel undo or right-click Done restores the last manual mark.")
 F.ui.done=button("Done",215,true,function(mouse) if mouse=="RightButton" then F:Undo() else F:Manual("manual") end end,"Confirm this guide step manually; this does not complete an in-game quest. Right-click undoes the last manual mark.")
 function F:HeaderStatus()
-    local zone=GetZoneText and self.Plain(GetZoneText())
+    local zone=self.Call(_G,"GetZoneText")
     if type(zone)~="string" or zone=="" then zone=self.guide and self.guide.zone or "Unknown zone" end
     local text=zone.." · Lv "..self:Level()
-    local xp=UnitXP and self.Number(UnitXP("player"))
-    local maximum=UnitXPMax and self.Number(UnitXPMax("player"))
+    local xp=self.Number(self.Call(_G,"UnitXP","player"))
+    local maximum=self.Number(self.Call(_G,"UnitXPMax","player"))
     if xp and maximum and maximum>0 and xp>=0 then text=text..(" · %d%%"):format(math.min(100,math.floor(xp/maximum*100))) end
     return text
 end
@@ -83,12 +85,12 @@ function F:Details(s)
     local blocked=self:Blocked(s); if blocked then lines[#lines+1]=blocked end
     if s.npc then lines[#lines+1]=s.npc end
     if s.text then lines[#lines+1]=s.text end
-    if s.hint then lines[#lines+1]=s.hint end
+    for _,line in ipairs(self:Advisory(s)) do lines[#lines+1]=line end
     if s.kind=="complete" then
         for _,q in ipairs(self:IDs(s)) do if self:InLog(q) then
             for _,o in ipairs(self:Objectives(q)) do if self.Table(o) then
-                local text=self.Plain(o.text)
-                if type(text)=="string" then lines[#lines+1]=(self.Plain(o.finished)==true and "[done] " or "[ ] ")..text end
+                local text=self.Read(o,"text")
+                if type(text)=="string" then lines[#lines+1]=(self.Read(o,"finished")==true and "[done] " or "[ ] ")..text end
             end end
         end end
     end
@@ -96,6 +98,9 @@ function F:Details(s)
     if s.nodungeon then lines[#lines+1]="Solo catch-up: grind to the displayed level." end
     if s.level then lines[#lines+1]="Current level: "..self:Level() end
     if s.kind=="die" then lines[#lines+1]="Optional death shortcut. Skip to avoid it." end
+    if s.healer and self.ValidPoint(s.healer) then lines[#lines+1]=("Spirit healer: %s · %.1f, %.1f"):format(s.healer[3] or s.owner.zone,s.healer[1],s.healer[2]) end
+    local prefix=s.owner.id..":"..s.index..":"
+    for key,value in pairs(self.navigationWarnings or {}) do if key:sub(1,#prefix)==prefix then lines[#lines+1]=value; break end end
     if not s.ids and not s.level then lines[#lines+1]="Confirm with Done after performing this step." end
     return table.concat(lines,"\n")
 end
@@ -112,13 +117,14 @@ end
 function F:Render()
     if not self.db then return end
     local s=self:Current(); local g=self.guide
+    if self.ui.lastStep~=s then hideTip(); self.ui.lastStep=s end
     status:SetText(self:HeaderStatus())
     badge:SetText(g and ((g.draft and "|cffe27265DRAFT ROUTE|r" or "Solo route")..(s and s.verify and " · Verify location" or "")..(self.inspect and " · Review" or "")) or "No matching route")
     local rows={}
     if not s then
-        action:SetText(""); current:SetText(self.missingAPI and "Incompatible client API" or (g and "Chapter complete" or "Route unavailable"))
-        meta:SetText(self.missingAPI and ("Missing "..self.missingAPI) or "/forlevel guides to select a route")
-        w.fullDetail=self.missingAPI and ("Missing "..self.missingAPI..". Verify the official Forever launch client.") or "All routes are drafts. Use /forlevel guides to select a compatible route."
+        action:SetText(""); current:SetText(self.missingAPI and "Incompatible client API" or (self.routeError and "Route unavailable" or (g and "Chapter complete" or "Route unavailable")))
+        meta:SetText(self.missingAPI and ("Missing "..self.missingAPI) or (self.routeError and "Broken chapter link · hover for details" or "/forlevel guides to select a route"))
+        w.fullDetail=self.missingAPI and ("Missing "..self.missingAPI..". Verify the official Forever launch client.") or (self.routeError and (self.routeError..". Use /forlevel guides and /forlevel guide ID to select a valid route.") or "All routes are drafts. Use /forlevel guides to select a compatible route.")
         arrow:Hide(); ring:Hide()
     else
         ring:Show(); action:SetText("|cffe54236"..s.kind:upper().."|r")
@@ -133,22 +139,20 @@ function F:Render()
         rows=self:VisibleRows(s)
     end
     for i,row in ipairs(self.ui.rows) do
-        local step=rows[i]; row.step=step
+        local step=rows[i]; local previous=row.step; row.step=step
         if step then
+            if w.tooltip==row and previous~=step then hideTip() end
             row.number:SetText(("%02d"):format(step.index)); row.label:SetText(self:Text(step))
             if step==s then row.highlight:Show(); row.edge:Show() else row.highlight:Hide(); row.edge:Hide() end
             row:Show()
-        else row:Hide() end
+        else if w.tooltip==row then hideTip() end; row:Hide() end
     end
+    if w.tooltip==w then tip(w.fullDetail) end
 end
 local event=CreateFrame("Frame")
 for _,name in ipairs({"ADDON_LOADED","PLAYER_LOGIN","QUEST_LOG_UPDATE","QUEST_TURNED_IN","PLAYER_LEVEL_UP","PLAYER_XP_UPDATE","BAG_UPDATE_DELAYED","ZONE_CHANGED_NEW_AREA"}) do event:RegisterEvent(name) end
 local elapsed=0
-local function learnZone()
-    local map=C_Map and C_Map.GetBestMapForUnit and F.Number(C_Map.GetBestMapForUnit("player"))
-    local info=map and C_Map.GetMapInfo and F.Plain(C_Map.GetMapInfo(map))
-    if info and type(F.Plain(info.name))=="string" then F.learned[info.name]=map end
-end
+local function learnZone() F:LearnZone() end
 event:SetScript("OnEvent",function(_,name,...)
     if name=="ADDON_LOADED" then
         if (...)~="ForLevel" then return end
@@ -162,9 +166,11 @@ event:SetScript("OnEvent",function(_,name,...)
     elseif not F.db then return
     elseif name=="PLAYER_LOGIN" then
         F:Character(); F:SoloExclusions(); learnZone()
-        if not F.guide or not F:GuideApplies(F.guide) then local g=F:DefaultGuide(); if g then F:Select(g.id) end end
+        if not F.guide or not F:GuideApplies(F.guide) then
+            if not F:Select(F.db.guide) then local g=F:DefaultGuide(); if g then F:Select(g.id) end end
+        end
     elseif name=="QUEST_TURNED_IN" then
-        local q=F.Number(...); if q then F.db.turned[q]=true end
+        local q=F.Integer((...),1,2147483647); if q then F.db.turned[q]=true end
     elseif name=="ZONE_CHANGED_NEW_AREA" then learnZone() end
 end)
 event:SetScript("OnUpdate",function(_,dt)
@@ -180,7 +186,7 @@ SlashCmdList.FORLEVEL=function(message)
     if not F.db then return end
     local cmd,arg=message:match("^(%S*)%s*(.-)$"); cmd=cmd:lower()
     if cmd=="" or cmd=="show" then w:Show(); F.db.hidden=false
-    elseif cmd=="hide" then w:Hide(); F.db.hidden=true
+    elseif cmd=="hide" then w:Hide(); F.db.hidden=true; hideTip()
     elseif cmd=="skip" then F:Manual("skip")
     elseif cmd=="done" then F:Manual("manual")
     elseif cmd=="undo" then F:Undo()
