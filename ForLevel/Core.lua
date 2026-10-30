@@ -1,4 +1,4 @@
--- ForeverSprint: original guidance-only engine. Licensed route data is separate.
+-- ForLevel: original guidance-only engine. Licensed route data is separate.
 local _, F = ...
 F.guides, F.order = {}, {}
 local kinds = {"accept","turnin","complete","go","level","sethome","flightpath","fly","hearth","train","vendor","loot","note","die"}
@@ -311,8 +311,8 @@ function F:Target(s)
     if map then return self:Offset(map,at[1]/100,at[2]/100) end
 end
 function F:Init()
-    ForeverSprintCharDB=F.Table(ForeverSprintCharDB) or {}
-    self.db=ForeverSprintCharDB
+    ForLevelCharDB=F.Table(ForLevelCharDB) or {}
+    self.db=ForLevelCharDB
     if self.db.routeVersion~="BoostedXP-1.0.6" then self.db.marks={}; self.db.undo={}; self.db.routeVersion="BoostedXP-1.0.6" end
     self.db.marks=F.Table(self.db.marks) or {}; self.db.undo=F.Table(self.db.undo) or {}; self.db.turned=F.Table(self.db.turned) or {}
     for k,v in pairs(self.db.marks) do if type(k)~="string" or not F.Table(v) then self.db.marks[k]=nil end end

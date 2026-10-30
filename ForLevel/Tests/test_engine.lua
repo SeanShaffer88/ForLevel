@@ -1,7 +1,7 @@
--- Run from the repository: lua ForeverSprint/Tests/test_engine.lua ForeverSprint/
+-- Run from the repository: lua ForLevel/Tests/test_engine.lua ForLevel/
 -- Actual addon engine and source data, mocked quest/map state; no game client required.
 local F={}
-local root=(arg and arg[1]) or "outputs/ForeverSprint/"
+local root=(arg and arg[1]) or "outputs/ForLevel/"
 local passed=0
 local function check(v,msg) assert(v,msg); passed=passed+1 end
 local state={log={},ready={},turned={},items={},level=1}
@@ -20,7 +20,7 @@ C_QuestLog={
 }
 C_Item={GetItemCount=function(q) return state.items[q] or 0 end}
 C_Map={}
-assert(loadfile(root.."Core.lua"))("ForeverSprint",F)
+assert(loadfile(root.."Core.lua"))("ForLevel",F)
 F.QuestTitles={}; F.ZoneIDs={}; F.Trainers={}
 F:Init()
 local function fixture(steps)
@@ -97,9 +97,9 @@ check(dist and dist>900,"offset target differs from player")
 check(converted[2][1]==.8 and converted[2][2]==.9,"target coordinates preserved")
 -- Register every shipped guide through the real engine.
 F.guides={}; F.order={}
-local toc=assert(io.open(root.."ForeverSprint.toc"))
+local toc=assert(io.open(root.."ForLevel.toc"))
 for line in toc:lines() do
- if line:match("^Guides") then assert(loadfile(root..line:gsub("\\","/")))("ForeverSprint",F) end
+ if line:match("^Guides") then assert(loadfile(root..line:gsub("\\","/")))("ForLevel",F) end
 end
 toc:close()
 check(#F.order==46,"all guide files register")
