@@ -1,9 +1,9 @@
 ## Interface: 16001
-## Title: ForeverSprint (Draft Alpha)
+## Title: ForLevel (Draft Alpha)
 ## Notes: Solo quest route list with integrated navigation arrow. All routes are drafts.
-## Author: ForeverSprint contributors; route data by Ragefarm (MIT)
+## Author: ForLevel contributors; route data by Ragefarm (MIT)
 ## Version: 0.1.0-alpha
-## SavedVariablesPerCharacter: ForeverSprintCharDB
+## SavedVariablesPerCharacter: ForLevelCharDB
 Core.lua
 Data\Zones.lua
 Data\QuestTitles.lua

@@ -14,6 +14,7 @@ function Object:RegisterEvent(k) self.events[k]=true end
 function Object:CreateFontString() return obj() end
 function Object:CreateTexture() return obj() end
 function Object:SetText(t) self.text=t end
+function Object:SetTexture(path) self.texture=path end
 function Object:SetSize(width,height) self.size={width,height} end
 function Object:SetPoint(...) self.point={...} end
 function Object:AddLine(text) self.lastLine=text end
@@ -21,7 +22,7 @@ function Object:Show() self.shown=true end
 function Object:Hide() self.shown=false end
 function Object:IsShown() return self.shown end
 function Object:GetPoint() return "CENTER",UIParent,"CENTER",10,20 end
-CreateFrame=function() local o=obj(); frames[#frames+1]=o; return o end
+CreateFrame=function(kind,name) local o=obj(); o.name=name; frames[#frames+1]=o; return o end
 UIParent=obj(); GameTooltip=obj(); DEFAULT_CHAT_FRAME=obj(); SlashCmdList={}
 local logged=false
 UnitFactionGroup=function() return logged and "Alliance" or nil end
@@ -42,13 +43,29 @@ C_QuestLog={
  GetTitleForQuestID=function(q) return "Quest "..q end,
 }
 C_Item={GetItemCount=function() return 0 end}
-for line in assert(io.open(root.."ForeverSprint.toc")):lines() do
- if line~="" and line:sub(1,1)~="#" then assert(loadfile(root..line:gsub("\\","/")))("ForeverSprint",F) end
+for line in assert(io.open(root.."ForLevel.toc")):lines() do
+ if line~="" and line:sub(1,1)~="#" then assert(loadfile(root..line:gsub("\\","/")))("ForLevel",F) end
 end
 local event
 for _,frame in ipairs(frames) do if frame.events.PLAYER_LOGIN then event=frame end end
 check(event~=nil,"UI event frame created")
-event.scripts.OnEvent(event,"ADDON_LOADED","ForeverSprint")
+event.scripts.OnEvent(event,"ADDON_LOADED","OtherAddon")
+check(F.db==nil,"unrelated addon load ignored")
+event.scripts.OnEvent(event,"ADDON_LOADED","ForLevel")
+check(frames[1].name=="ForLevelWindow","renamed frame identity")
+check(F.ui.arrow.texture=="Interface\\AddOns\\ForLevel\\Arrow.tga","renamed arrow path")
+check(F.ui.ring.texture=="Interface\\AddOns\\ForLevel\\Ring.tga","renamed ring path")
+check(SLASH_FORLEVEL1=="/forlevel" and SLASH_FORLEVEL2=="/fl","both renamed command aliases registered")
+local function dispatch(alias,message)
+ for key,handler in pairs(SlashCmdList) do
+  for i=1,10 do if _G["SLASH_"..key..i]==alias then handler(message); return true end end
+ end
+ return false
+end
+for _,alias in ipairs({"/forlevel","/fl"}) do
+ check(dispatch(alias,"hide") and F.db.hidden==true,"alias hides: "..alias)
+ check(dispatch(alias,"show") and F.db.hidden==false,"alias shows: "..alias)
+end
 check(F.guide==nil,"unavailable login identity does not select wrong route")
 logged=true
 event.scripts.OnEvent(event,"PLAYER_LOGIN")
@@ -93,20 +110,20 @@ check(not F:HeaderStatus():find("%%"),"zero XP denominator safe")
 for _,button in ipairs({F.ui.back,F.ui.skip,F.ui.done}) do
  check(button.point[3]==-282 and button.size[2]+282<=325,"footer button stays in bounds")
 end
-SlashCmdList.FOREVERSPRINT("hide")
+SlashCmdList.FORLEVEL("hide")
 check(F.db.hidden==true and not frames[1]:IsShown(),"hide saved")
-SlashCmdList.FOREVERSPRINT("show")
+SlashCmdList.FORLEVEL("show")
 check(F.db.hidden==false and frames[1]:IsShown(),"show restored")
 frames[1].scripts.OnDragStop(frames[1])
 check(F.db.position[3]==10 and F.db.position[4]==20,"position saved")
-SlashCmdList.FOREVERSPRINT("skip")
+SlashCmdList.FORLEVEL("skip")
 local undo=#F.db.undo
-SlashCmdList.FOREVERSPRINT("undo")
+SlashCmdList.FORLEVEL("undo")
 check(#F.db.undo==undo-1,"UI undo invokes engine")
 -- Saved state round-trip uses the actual same persisted table on a simulated reload.
 F:Init()
-check(F.db==ForeverSprintCharDB and F.db.turned[783],"saved character state reused")
-ForeverSprintCharDB={marks="invalid",undo=false,turned="invalid",position={}}
+check(F.db==ForLevelCharDB and F.db.turned[783],"saved character state reused")
+ForLevelCharDB={marks="invalid",undo=false,turned="invalid",position={}}
 F:Init(); check(type(F.db.marks)=="table" and type(F.db.undo)=="table","invalid saved fields repaired")
 local old=C_QuestLog.IsComplete; C_QuestLog.IsComplete=nil
 F:Init(); check(F.missingAPI=="C_QuestLog.IsComplete" and F:Current()==nil,"missing API suspends route")

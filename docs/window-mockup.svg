@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="360" height="375" viewBox="0 0 360 375">
-<title>ForeverSprint selected design 04 — original mockup</title>
+<title>ForLevel selected design 04 — original mockup</title>
 <desc>320 by 325 pixel charcoal quest window, integrated white arrow inside red ring, five numbered quest rows. Illustrative quest text and XP only.</desc>
 <rect width="360" height="375" fill="#29332f"/>
 <rect x="20" y="20" width="320" height="325" rx="2" fill="#0b0c0d" stroke="#292b2d"/>
 <path d="M20 21H340" stroke="#d5342b" stroke-width="2"/>
-<text x="32" y="43" fill="#eee" font-family="Arial,sans-serif" font-size="12" font-weight="bold">ForeverSprint</text>
+<text x="32" y="43" fill="#eee" font-family="Arial,sans-serif" font-size="12" font-weight="bold">ForLevel</text>
 <text x="328" y="43" text-anchor="end" fill="#999" font-family="Arial,sans-serif" font-size="10">Elwynn · Lv 1 · 12%</text>
 <text x="32" y="61" fill="#d66b60" font-family="Arial,sans-serif" font-size="9">DRAFT ROUTE · sample data</text>
 <path d="M20 70H340" stroke="#202224"/>

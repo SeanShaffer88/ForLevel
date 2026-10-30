@@ -1,6 +1,6 @@
 -- Selected mockup 04: compact charcoal/red quest list, with an integrated arrow.
 local _,F=...
-local w=CreateFrame("Frame","ForeverSprintWindow",UIParent,"BackdropTemplate")
+local w=CreateFrame("Frame","ForLevelWindow",UIParent,"BackdropTemplate")
 w:SetSize(320,325); w:SetPoint("CENTER",UIParent,"CENTER",350,0)
 w:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8",edgeFile="Interface\\Buttons\\WHITE8X8",edgeSize=1})
 w:SetBackdropColor(.035,.039,.043,.98); w:SetBackdropBorderColor(.14,.15,.16,1)
@@ -24,20 +24,20 @@ local function font(parent,x,y,width,object,height)
     if height then t:SetHeight(height) end
     return t
 end
-local title=font(w,12,-13,116,"GameFontHighlightSmall",14); title:SetText("ForeverSprint")
+local title=font(w,12,-13,116,"GameFontHighlightSmall",14); title:SetText("ForLevel")
 local status=font(w,132,-13,176,"GameFontDisableSmall",14); status:SetJustifyH("RIGHT")
 status:SetWordWrap(false)
 local badge=font(w,12,-34,296,"GameFontHighlightSmall",12)
 local ring=w:CreateTexture(nil,"ARTWORK"); ring:SetPoint("TOPLEFT",10,-59); ring:SetSize(54,54)
-ring:SetTexture("Interface\\AddOns\\ForeverSprint\\Ring.tga")
+ring:SetTexture("Interface\\AddOns\\ForLevel\\Ring.tga")
 local arrow=w:CreateTexture(nil,"OVERLAY"); arrow:SetPoint("TOPLEFT",21,-70); arrow:SetSize(32,32)
-arrow:SetTexture("Interface\\AddOns\\ForeverSprint\\Arrow.tga")
+arrow:SetTexture("Interface\\AddOns\\ForLevel\\Arrow.tga")
 local action=font(w,77,-61,229,"GameFontHighlightSmall",14)
 local current=font(w,77,-79,229,"GameFontHighlight",29)
 local meta=font(w,77,-111,229,"GameFontDisableSmall",14)
 F.ui={window=w,arrow=arrow,ring=ring,status=status,badge=badge,action=action,current=current,meta=meta,rows={}}
 local function tip(text)
-    GameTooltip:SetOwner(w,"ANCHOR_RIGHT"); GameTooltip:SetText("ForeverSprint")
+    GameTooltip:SetOwner(w,"ANCHOR_RIGHT"); GameTooltip:SetText("ForLevel")
     GameTooltip:AddLine(text,1,1,1,true); GameTooltip:Show()
 end
 w:SetScript("OnEnter",function() if w.fullDetail then tip(w.fullDetail) end end)
@@ -49,7 +49,7 @@ for i=1,5 do
     row.number=font(row,10,-8,25,"GameFontDisableSmall",14)
     row.label=font(row,36,-8,272,"GameFontHighlightSmall",14)
     row.label:SetWordWrap(false)
-    row:SetScript("OnEnter",function(self) if self.step then tip(F:Text(self.step).."\n"..(self.step.text or "").."\nClick to review; /fs resume continues the route.") end end)
+    row:SetScript("OnEnter",function(self) if self.step then tip(F:Text(self.step).."\n"..(self.step.text or "").."\nClick to review; /forlevel resume continues the route.") end end)
     row:SetScript("OnLeave",function() GameTooltip:Hide() end)
     row:SetScript("OnClick",function(self) if self.step then F.inspect=self.step.index; F:Render() end end)
     F.ui.rows[i]=row
@@ -66,7 +66,7 @@ local function button(label,x,red,callback,help)
     return b
 end
 F.ui.back=button("Back",11,false,function(mouse) if mouse=="RightButton" then F.inspect=nil else F:Back() end end,"Back reviews a previous step. Right-click resumes automatic progression.")
-F.ui.skip=button("Skip",113,false,function() F:Manual("skip") end,"Record a reversible manual skip. /fs undo or right-click Done restores the last manual mark.")
+F.ui.skip=button("Skip",113,false,function() F:Manual("skip") end,"Record a reversible manual skip. /forlevel undo or right-click Done restores the last manual mark.")
 F.ui.done=button("Done",215,true,function(mouse) if mouse=="RightButton" then F:Undo() else F:Manual("manual") end end,"Confirm this guide step manually; this does not complete an in-game quest. Right-click undoes the last manual mark.")
 function F:HeaderStatus()
     local zone=GetZoneText and self.Plain(GetZoneText())
@@ -79,7 +79,7 @@ function F:HeaderStatus()
 end
 function F:Details(s)
     local lines={self:Text(s)}
-    if self.inspect then lines[#lines+1]="Review mode: right-click Back or /fs resume to continue" end
+    if self.inspect then lines[#lines+1]="Review mode: right-click Back or /forlevel resume to continue" end
     local blocked=self:Blocked(s); if blocked then lines[#lines+1]=blocked end
     if s.npc then lines[#lines+1]=s.npc end
     if s.text then lines[#lines+1]=s.text end
@@ -117,8 +117,8 @@ function F:Render()
     local rows={}
     if not s then
         action:SetText(""); current:SetText(self.missingAPI and "Incompatible client API" or (g and "Chapter complete" or "Route unavailable"))
-        meta:SetText(self.missingAPI and ("Missing "..self.missingAPI) or "/fs guides to select a route")
-        w.fullDetail=self.missingAPI and ("Missing "..self.missingAPI..". Verify the official Forever launch client.") or "All routes are drafts. Use /fs guides to select a compatible route."
+        meta:SetText(self.missingAPI and ("Missing "..self.missingAPI) or "/forlevel guides to select a route")
+        w.fullDetail=self.missingAPI and ("Missing "..self.missingAPI..". Verify the official Forever launch client.") or "All routes are drafts. Use /forlevel guides to select a compatible route."
         arrow:Hide(); ring:Hide()
     else
         ring:Show(); action:SetText("|cffe54236"..s.kind:upper().."|r")
@@ -151,7 +151,7 @@ local function learnZone()
 end
 event:SetScript("OnEvent",function(_,name,...)
     if name=="ADDON_LOADED" then
-        if (...)~="ForeverSprint" then return end
+        if (...)~="ForLevel" then return end
         F:Init()
         local position=F.db.position
         if F.Table(position) and type(position[1])=="string" and type(position[2])=="string" and F.Number(position[3]) and F.Number(position[4]) then
@@ -173,9 +173,10 @@ event:SetScript("OnUpdate",function(_,dt)
     elapsed=0
     if F.db and w:IsShown() then F:Render() end
 end)
-local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cffe27265ForeverSprint:|r "..text) end
-SLASH_FOREVERSPRINT1="/fs"
-SlashCmdList.FOREVERSPRINT=function(message)
+local function say(text) DEFAULT_CHAT_FRAME:AddMessage("|cffe27265ForLevel:|r "..text) end
+SLASH_FORLEVEL1="/forlevel"
+SLASH_FORLEVEL2="/fl"
+SlashCmdList.FORLEVEL=function(message)
     if not F.db then return end
     local cmd,arg=message:match("^(%S*)%s*(.-)$"); cmd=cmd:lower()
     if cmd=="" or cmd=="show" then w:Show(); F.db.hidden=false
@@ -194,6 +195,6 @@ SlashCmdList.FOREVERSPRINT=function(message)
             if found then break end
         end end; if found then break end end
         if not found then say("No compatible solo accept step found.") end
-    else say("/fs show | hide | guides | guide ID | find QUESTID | back | resume | skip | done | undo") end
+    else say("/forlevel show | hide | guides | guide ID | find QUESTID | back | resume | skip | done | undo") end
     F:Render()
 end
